@@ -1,0 +1,31 @@
+[flake8]
+max-line-length = 120
+jobs = 4
+
+ignore =
+    C408,  # Unnecessary <dict/list/tuple> call - rewrite as a literal
+    W503,  # Line break occurred before a binary operator
+    W504,  # Line break occurred after a binary operator
+
+per-file-ignores =
+    __init__.py: F401, F403
+
+exclude =
+    .git,
+    __pycache__,
+    */venv/*,
+    */migrations/*,
+
+
+[pycodestyle]
+max_line_length = 120
+jobs = 4
+
+ignore =
+    E501,  # Line too long (> 82)
+
+exclude =
+    .git,
+    __pycache__,
+    */venv/*,
+    */migrations/*,
