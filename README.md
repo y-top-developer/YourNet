@@ -1,2 +1,3 @@
-# Random-Coffee
-Telegram Bot For Random Coffee 🎲
+# YourNet
+
+Telegram Bot For Leisure Planning ☀️
