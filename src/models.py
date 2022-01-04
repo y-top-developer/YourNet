@@ -44,7 +44,7 @@ class Pair(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
     def __repr__(self):
-        return f'<Pair @{self.id}; User A @{self.user_a} - User B @{self.user_b}>'
+        return f'<Pair {self.id}; User A {self.user_a} - User B {self.user_b}>'
 
 
 Base.metadata.create_all(engine)

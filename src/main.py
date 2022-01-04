@@ -1,9 +1,10 @@
+import random
 import telebot
 from telebot import types, custom_filters
 
 from settings import ADMINS, TELEGRAM_TOKEN, SMTP
 from messages import is_correct_mail
-from orm import get_user, set_field, create_user, get_admins, get_users
+from orm import get_user, set_field, create_user, get_admins, get_users, get_active_users, create_pair, delete_pairs, get_pairs
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -122,9 +123,11 @@ def show_profile_callback(call):
         text=answer
     )
 
-    user = get_user(user_id)
+    pairs = get_pairs()
     answer = (
-        'Все пары'
+        '\n'.join(
+            [f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - [{get_user(pair.user_b).name}](tg://user?id={get_user(pair.user_b).telegram_id})' for pair in pairs]
+        )
     )
 
     keyboard = types.InlineKeyboardMarkup()
@@ -139,7 +142,7 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
+@ bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -153,7 +156,14 @@ def show_profile_callback(call):
         text=answer
     )
 
-    user = get_user(user_id)
+    all_active_users = get_active_users()
+    delete_pairs()
+    random.shuffle(all_active_users)
+    pairs = [all_active_users[i:i + 2] for i in range(0, len(all_active_users), 2)]
+    for pair in pairs:
+        if len(pair) == 2:
+            create_pair(pair[0].telegram_id, pair[1].telegram_id)
+
     answer = (
         'Сгенерировал пары'
     )
@@ -170,10 +180,14 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
+@ bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
+
+    for pair in get_pairs():
+        bot.send_message(pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
+        bot.send_message(pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
 
     answer = ('👉 Отправить приглашения')
 
@@ -184,7 +198,6 @@ def show_profile_callback(call):
         text=answer
     )
 
-    user = get_user(user_id)
     answer = (
         'Отправил приглашения'
     )
@@ -203,7 +216,7 @@ def show_profile_callback(call):
 # user commands
 
 
-@bot.message_handler(commands=['start'])
+@ bot.message_handler(commands=['start'])
 def start_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_mail
@@ -238,7 +251,7 @@ def start_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.ask_mail)
+@ bot.message_handler(state=States.ask_mail)
 def ask_mail_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_password
@@ -277,7 +290,7 @@ def ask_mail_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.ask_password)
+@ bot.message_handler(state=States.ask_password)
 def ask_password_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_name
@@ -297,7 +310,7 @@ def ask_password_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.ask_name)
+@ bot.message_handler(state=States.ask_name)
 def ask_name_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_link
@@ -317,7 +330,7 @@ def ask_name_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.ask_link)
+@ bot.message_handler(state=States.ask_link)
 def ask_link_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -339,7 +352,7 @@ def ask_link_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(commands=['help'])
+@ bot.message_handler(commands=['help'])
 def help_handler(message):
     user_id = message.from_user.id
 
@@ -350,7 +363,7 @@ def help_handler(message):
         start_handler(message)
 
 
-@bot.message_handler(state=States.change_name)
+@ bot.message_handler(state=States.change_name)
 def change_name_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -374,7 +387,7 @@ def change_name_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.change_link)
+@ bot.message_handler(state=States.change_link)
 def change_link_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -398,7 +411,7 @@ def change_link_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.change_work)
+@ bot.message_handler(state=States.change_work)
 def change_work_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -422,7 +435,7 @@ def change_work_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.change_about)
+@ bot.message_handler(state=States.change_about)
 def change_about_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -448,7 +461,7 @@ def change_about_handler(message):
 # user callbacks
 
 
-@bot.callback_query_handler(func=lambda call: call.data in ['help', 'help_from_show_profile'])
+@ bot.callback_query_handler(func=lambda call: call.data in ['help', 'help_from_show_profile'])
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -473,7 +486,7 @@ def change_profile_callback(call):
     help(call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'show_profile')
+@ bot.callback_query_handler(func=lambda call: call.data == 'show_profile')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -505,7 +518,7 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'change_name')
+@ bot.callback_query_handler(func=lambda call: call.data == 'change_name')
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -535,7 +548,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'change_link')
+@ bot.callback_query_handler(func=lambda call: call.data == 'change_link')
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -565,7 +578,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'change_work')
+@ bot.callback_query_handler(func=lambda call: call.data == 'change_work')
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -595,7 +608,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'change_about')
+@ bot.callback_query_handler(func=lambda call: call.data == 'change_about')
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -627,7 +640,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'change_profile')
+@ bot.callback_query_handler(func=lambda call: call.data == 'change_profile')
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -674,7 +687,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'set_pause')
+@ bot.callback_query_handler(func=lambda call: call.data == 'set_pause')
 def set_pause_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -704,7 +717,7 @@ def set_pause_callback(call):
     bot.send_message(user_id, answer, reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'set_run')
+@ bot.callback_query_handler(func=lambda call: call.data == 'set_run')
 def set_run_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
