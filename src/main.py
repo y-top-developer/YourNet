@@ -1,197 +1,509 @@
-import logging
-
-from sqlalchemy.sql.functions import user
 import telebot
 from telebot import types, custom_filters
-from sqlalchemy.orm import sessionmaker
 
-from models import engine
-from settings import ADMINS, TELEGRAM_TOKEN
-from orm import get_password, set_active, register_user, set_link, set_admin, set_mail, is_verified, set_verified, get_profile, is_active, is_admin, set_name, get_users, get_pairs
-from messages import send_password, is_correct_mail, is_correct_company, generate_pairs
+from settings import ADMINS, TELEGRAM_TOKEN, SMTP
+from messages import is_correct_mail
 
-logging.basicConfig()
-logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
-
-session = sessionmaker(engine)()
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 
+# states
+
 class States:
-    send_mail = 1
+    ask_mail = 1
     ask_password = 2
     ask_name = 3
-    ask_about = 4
-    ask_mode = 5
+    ask_link = 4
+    complete = 5
+    change_name = 6
+    change_link = 7
+    change_work = 8
+    change_about = 9
+
+# general functions
 
 
-def ask_about_mode(chat_id):
+def help(message):
+    user_id = message.from_user.id
+
     keyboard = types.InlineKeyboardMarkup()
-    keyboard.row_width = 2
+    keyboard.row_width = 1
 
-    button_run = types.InlineKeyboardButton(text='Я в деле!🔥', callback_data='run')
-    button_stop = types.InlineKeyboardButton(text='В другой раз😴', callback_data='stop')
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Посмотреть свой профиль',
+            callback_data='show_profile'
+        ),
+        types.InlineKeyboardButton(
+            text='Поменять данные профиля',
+            callback_data='change_profile'
+        ),
+        types.InlineKeyboardButton(
+            text='Поставить на паузу',
+            callback_data='set_pause'
+        ),
+        types.InlineKeyboardButton(
+            text='Снять паузу',
+            callback_data='set_run'
+        )
+    )
 
-    keyboard.add(button_run, button_stop)
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, 'Выбери подходящую опцию ниже', reply_markup=keyboard)
 
-    bot.send_message(chat_id, 'Участвуешь на этой неделе?', reply_markup=keyboard)
-
-
-def help(chat_id):
-    if is_verified(session, chat_id):
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.row_width = 2
-
-        button_profile = types.InlineKeyboardButton(text='Мой профиль', callback_data='my_profile')
-        button_mode = types.InlineKeyboardButton(text='Мой статус', callback_data='my_mode')
-        button_change = types.InlineKeyboardButton(text='Поменять статус', callback_data='change_mode')
-
-        keyboard.add(button_profile, button_mode)
-        keyboard.add(button_change)
-
-        if is_admin(session, chat_id):
-            button_users = types.InlineKeyboardButton(text='Участники', callback_data='get_users')
-            button_pairs = types.InlineKeyboardButton(text='Пары', callback_data='get_pairs')
-            keyboard.add(button_users, button_pairs)
-
-            button_generate_pairs = types.InlineKeyboardButton(
-                text='Сгенерировать пары', callback_data='generate_pairs')
-            button_send_invites = types.InlineKeyboardButton(text='Отправить приглашения', callback_data='send_invites')
-            keyboard.add(button_generate_pairs, button_send_invites)
-
-        bot.send_message(chat_id, 'Настройки', reply_markup=keyboard)
-
-
-@bot.message_handler(commands=['help'])
-def help_handler(message):
-    help(message.from_user.id)
+# user commands
 
 
 @bot.message_handler(commands=['start'])
-def start(message):
-    register_user(session, message.from_user.id, message.from_user.username)
-    if message.from_user.username in ADMINS:
-        set_admin(session, message.from_user.id, True)
-    if is_verified(session, message.from_user.id):
-        bot.set_state(message.from_user.id, States.ask_name)
-        bot.send_message(message.from_user.id,
-                         'Привет, рад тебя видеть!🤩\nКак тебы зовут?')
-    else:
-        bot.set_state(message.from_user.id, States.send_mail)
-        bot.send_message(message.from_user.id,
-                         'Привет, рад тебя видеть!🤩\nВведи свой корпоративный mail, чтобы получить пароль📧')
-
-
-@bot.message_handler(state=States.send_mail)
-def send_password_telegram(message):
-    mail = message.text
+def start_handler(message):
     user_id = message.from_user.id
-    if is_correct_mail(mail) and is_correct_company(mail):
-        set_mail(session, user_id, mail)
-        send_password(mail, get_password(session, user_id))
-        bot.send_message(user_id, 'Отправил📮\nВведи пароль из письма🔑')
-        bot.set_state(user_id, States.ask_password)
-    elif not is_correct_mail(mail):
-        bot.send_message(user_id, 'Что-то с форматом⚠️')
-    elif not is_correct_company(mail):
-        bot.send_message(user_id, 'Не знаю такой компании⚠️')
+    next_state = States.ask_mail
+
+    answer = ('Привет!🤩\n'
+              'Я Random Coffee бот 🤖\n\n'
+              'Каждую неделю я буду предлагать '
+              'тебе для встречи интересного человека, '
+              'случайно выбранного среди '
+              'других участников🎲\n\n'
+              'Введи свой корпоративный mail, '
+              'чтобы получить пароль📧')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer)
+    bot.set_state(user_id, next_state)
+
+
+@bot.message_handler(state=States.ask_mail)
+def ask_mail_handler(message):
+    user_id = message.from_user.id
+    next_state = States.ask_password
+
+    mail = message.text
+
+    if is_correct_mail(mail) and SMTP:
+        answer = ('Отправил📮\n'
+                  'Введи пароль из письма🔑')
+    elif is_correct_mail(mail) and not SMTP:
+        answer = ('Напиши админу, '
+                  f'чтобы получить пароль ({", ".join(ADMINS)})🛡️'
+                  'И введи его сюда🔑')
     else:
-        bot.send_message(user_id, 'Что-то не так😔')
+        answer = ('Введи свой корпоративный mail, '
+                  'чтобы получить пароль📧')
+        next_state = States.ask_mail
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer)
+    bot.set_state(user_id, next_state)
 
 
 @bot.message_handler(state=States.ask_password)
-def ask_info(message):
-    password = message.text
+def ask_password_handler(message):
     user_id = message.from_user.id
-    if get_password(session, user_id) == (password,):
-        set_verified(session, user_id)
-        bot.send_message(user_id,
-                         'Ты в системе🌐\n\nКак тебя зовут?')
-        bot.set_state(message.from_user.id, States.ask_name)
-    else:
-        bot.send_message(user_id, 'Пароль не подходит⚠️')
+    next_state = States.ask_name
+
+    answer = ('Ты в системе🌐\n\n'
+              'Как тебя зовут?☕️')
+
+    bot.send_message(user_id, answer)
+    bot.set_state(user_id, next_state)
 
 
 @bot.message_handler(state=States.ask_name)
-def done(message):
-    name = message.text
-    set_name(session, message.from_user.id, name)
-    bot.send_message(message.from_user.id,
-                     'Рад познакомиться!)\n\nПришли ссылку на свой профиль в любой социальной сети. Так вы в паре сможете лучше узнать друг о друге до встречи🔎')
-    bot.set_state(message.from_user.id, States.ask_about)
+def ask_name_handler(message):
+    user_id = message.from_user.id
+    next_state = States.ask_link
+
+    answer = ('Рад познакомиться!)\n\n'
+              'Пришли ссылку на свой профиль '
+              'в любой социальной сети. '
+              'Так вы в паре сможете лучше узнать '
+              'друг о друге до встречи🔎')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer)
+    bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(state=States.ask_about)
-def done(message):
-    link = message.text
-    set_link(session, message.from_user.id, link)
-    set_active(session, message.from_user.id, True)
-    bot.send_message(message.from_user.id, 'Отлично, все готово!✨\nСвою пару для встречи ты будешь узнавать каждый понедельник — сообщение придет в этот чат\n\nНапиши партнеру в Telegram, чтобы договориться о встрече или звонке\nВремя и место вы выбираете сами')
-    bot.set_state(message.from_user.id, States.ask_mode)
-    ask_about_mode(message.from_user.id)
+@bot.message_handler(state=States.ask_link)
+def ask_link_handler(message):
+    user_id = message.from_user.id
+    next_state = States.complete
+
+    answer = ('Отлично, все готово!✨\n\n'
+              'Свою пару для встречи ты будешь узнавать'
+              ' каждый понедельник — сообщение придет в этот чат\n\n'
+              'Напиши партнеру в Telegram, '
+              'чтобы договориться о встрече или звонке\n'
+              'Время и место вы выбираете сами\n\n'
+              'Если остались вопросы - /help!)')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer)
+    bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'run')
-def run_callback(call):
-    set_active(session, call.from_user.id, True)
-    bot.answer_callback_query(call.id, 'Жди пару!)')
+@bot.message_handler(commands=['help'], state=[States.complete, ])
+def help_handler(message):
+    help(message)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'stop')
-def stop_callback(call):
-    set_active(session, call.from_user.id, False)
-    bot.answer_callback_query(call.id, 'Заходи еще!)')
+@bot.message_handler(state=States.change_name)
+def change_name_handler(message):
+    user_id = message.from_user.id
+    next_state = States.complete
+
+    answer = 'Готово'
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'my_profile')
-def my_profile_callback(call):
-    profile = get_profile(session, call.from_user.id)
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.from_user.id, f'🕴️{profile[0]}\n📧 {profile[1]}\n🤳 {profile[2]}')
+@bot.message_handler(state=States.change_link)
+def change_link_handler(message):
+    user_id = message.from_user.id
+    next_state = States.complete
+
+    answer = 'Готово'
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'my_mode')
-def my_mode_callback(call):
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.from_user.id, 'Ты в деле!' if is_active(session, call.from_user.id) else 'На паузе')
+@bot.message_handler(state=States.change_work)
+def change_work_handler(message):
+    user_id = message.from_user.id
+    next_state = States.complete
+
+    answer = 'Готово'
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'change_mode')
-def change_mode_callback(call):
-    bot.answer_callback_query(call.id)
-    ask_about_mode(call.from_user.id)
+@bot.message_handler(state=States.change_about)
+def change_about_handler(message):
+    user_id = message.from_user.id
+    next_state = States.complete
+
+    answer = 'Готово'
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
+# user callbacks
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'get_users')
-def get_users_callback(call):
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.from_user.id, '\n'.join([
-        f'\'{user[0]}\' - \'{user[1]}\' - \'@{user[2]}\' - is_active? {user[3]} - \'{user[4]}\' - \'{user[5]}\'' for user in get_users(session)
-    ]))
+@bot.callback_query_handler(func=lambda call: call.data == 'help')
+def change_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = call.message.text
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    help(call)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'get_pairs')
-def get_pairs_callback(call):
-    bot.answer_callback_query(call.id)
-    bot.send_message(call.from_user.id, '\n'.join([
-        f'{get_profile(session, pair[0])} - {get_profile(session, pair[1])}' for pair in get_pairs(session)
-    ]))
+@bot.callback_query_handler(func=lambda call: call.data == 'show_profile')
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Хочу посмотреть свой профиль')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = (
+        'Вот так будет выглядеть твой профиль для собеседника:\n\n'
+        'Иван Иванов\n'
+        '*Профиль:* t.me\n\n'
+        '*Чем занимается:* Python Developer\n'
+        '*Зацепки для начала разговора:* Meow',
+    )
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
-def change_mode_callback(call):
-    bot.answer_callback_query(call.id)
-    generate_pairs(session)
-    bot.send_message(call.from_user.id, 'Генерирую пары')
+@bot.callback_query_handler(func=lambda call: call.data == 'change_name')
+def change_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+    next_state = States.change_name
+
+    answer = ('👉 Своё имя')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Введи свое имя')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
-def change_mode_callback(call):
-    bot.answer_callback_query(call.id)
-    for pair in get_pairs(session):
-        bot.send_message(pair[0], f'Твоя пара {get_profile(session, pair[1])}')
-        bot.send_message(pair[1], f'Твоя пара {get_profile(session, pair[0])}')
-    bot.send_message(call.from_user.id, 'Отправил приглашения')
+@bot.callback_query_handler(func=lambda call: call.data == 'change_link')
+def change_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+    next_state = States.change_link
+
+    answer = ('👉 Ссылку на социальную сеть')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Введи новую ссылку')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'change_work')
+def change_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+    next_state = States.change_work
+
+    answer = ('👉 Кем работаю')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Напиши, чем ты занимаешься по работе')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'change_about')
+def change_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+    next_state = States.change_about
+
+    answer = ('👉 О себе')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Напиши  новое описание:'
+              ' пара предложений о твоих профессиональных'
+              ' интересах, взглядах, хобби')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'change_profile')
+def change_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+    next_state = States.complete
+
+    answer = ('👉 Поменять данные профиля')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Что хочешь поменять?')
+
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.row_width = 1
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Своё имя',
+            callback_data='change_name'
+        ),
+        types.InlineKeyboardButton(
+            text='Ссылку на социальную сеть',
+            callback_data='change_link'
+        ),
+        types.InlineKeyboardButton(
+            text='Кем работаю',
+            callback_data='change_work'
+        ),
+        types.InlineKeyboardButton(
+            text='О себе',
+            callback_data='change_about'
+        ),
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'set_pause')
+def set_pause_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Поставить на паузу')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Готово')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'set_run')
+def set_run_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Снять паузу')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = ('Готово')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
 
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))
