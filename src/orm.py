@@ -35,6 +35,17 @@ def get_admins():
     )
     return admins if admins else []
 
+
+def get_users():
+    users = (
+        session.query(
+            User
+        )
+        .all()
+    )
+    return users if users else []
+
+
 def create_user(user_id):
     if not get_user(user_id):
         session.add(User(

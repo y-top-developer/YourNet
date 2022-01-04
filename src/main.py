@@ -3,7 +3,7 @@ from telebot import types, custom_filters
 
 from settings import ADMINS, TELEGRAM_TOKEN, SMTP
 from messages import is_correct_mail
-from orm import get_user, set_field, create_user, get_admins
+from orm import get_user, set_field, create_user, get_admins, get_users
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -50,11 +50,155 @@ def help(message):
     )
 
     user = get_user(user_id)
-    # if user.is_admin:
-
+    if user.is_admin:
+        keyboard.add(
+            types.InlineKeyboardButton(
+                text='Участники',
+                callback_data='show_users'
+            ),
+            types.InlineKeyboardButton(
+                text='Пары',
+                callback_data='show_pairs'
+            ),
+            types.InlineKeyboardButton(
+                text='Сгенерировать пары',
+                callback_data='generate_pairs'
+            ),
+            types.InlineKeyboardButton(
+                text='Отправить приглашения',
+                callback_data='send_invites'
+            )
+        )
 
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, 'Выбери подходящую опцию ниже', reply_markup=keyboard)
+
+# admin callbacks
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'show_users')
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Участники')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    users = get_users()
+    answer = (
+        '\n'.join(
+            [f'[{user.name}](tg://user?id={user.telegram_id}) - {"Run" if user.is_active else "Pause"} - {user.password}' for user in users])
+    )
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'show_pairs')
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Пары')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    user = get_user(user_id)
+    answer = (
+        'Все пары'
+    )
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Сгенерировать пары')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    user = get_user(user_id)
+    answer = (
+        'Сгенерировал пары'
+    )
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    answer = ('👉 Отправить приглашения')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    user = get_user(user_id)
+    answer = (
+        'Отправил приглашения'
+    )
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 # user commands
 
