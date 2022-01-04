@@ -44,10 +44,12 @@ def help(message):
             callback_data='set_pause'
         ),
         types.InlineKeyboardButton(
-            text='Снять паузу',
+            text='Снять c паузы',
             callback_data='set_run'
         )
     )
+
+    user = get_user(user_id)
 
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, 'Выбери подходящую опцию ниже', reply_markup=keyboard)
@@ -61,7 +63,7 @@ def start_handler(message):
     next_state = States.ask_mail
 
     user = get_user(user_id)
-    if not user or not user.is_verified:
+    if (not user or not user.is_verified) and message.from_user.username not in ADMINS:
         create_user(user_id)
         answer = ('Привет!🤩\n'
                   'Я Random Coffee бот 🤖\n\n'
@@ -71,6 +73,14 @@ def start_handler(message):
                   'других участников🎲\n\n'
                   'Введи свой корпоративный mail, '
                   'чтобы получить пароль📧')
+    elif not user and message.from_user.username in ADMINS:
+        create_user(user_id)
+        set_field(user_id, 'is_admin', True)
+        set_field(user_id, 'is_verified', True)
+
+        answer = ('Привет, админ!⭐\n\n'
+                  'Как тебя зовут?☕️')
+        next_state = States.ask_name
     else:
         answer = ('Рад тебя видеть!🔥\n'
                   'Если есть вопросы - /help')
@@ -93,13 +103,11 @@ def ask_mail_handler(message):
                   'Введи пароль из письма🔑')
 
         set_field(user_id, 'mail', mail)
-        set_field(user_id, 'password', generate_password())
     elif is_correct_mail(mail) and not SMTP:
         answer = ('Напиши админу, '
                   f'чтобы получить пароль ({", ".join(ADMINS)})🛡️\n'
                   'И введи его сюда🔑')
         set_field(user_id, 'mail', mail)
-        set_field(user_id, 'password', generate_password())
     else:
         answer = ('Введи свой корпоративный mail, '
                   'чтобы получить пароль📧')
@@ -172,9 +180,15 @@ def ask_link_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(commands=['help'], state=[States.complete])
+@bot.message_handler(commands=['help'])
 def help_handler(message):
-    help(message)
+    user_id = message.from_user.id
+
+    user = get_user(user_id)
+    if user and user.is_verified:
+        help(message)
+    else:
+        start_handler(message)
 
 
 @bot.message_handler(state=States.change_name)
@@ -536,7 +550,7 @@ def set_run_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
 
-    answer = ('👉 Снять паузу')
+    answer = ('👉 Снять с паузу')
 
     bot.send_chat_action(user_id, 'typing')
     bot.edit_message_text(
