@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 
 from models import engine
 from settings import ADMINS, TELEGRAM_TOKEN
-from orm import get_password, set_active, register_user, set_link, set_admin, set_mail, is_verified, set_verified, get_profile, is_active, is_admin, set_name, get_users
-from messages import send_password, is_correct_mail, is_correct_company
+from orm import get_password, set_active, register_user, set_link, set_admin, set_mail, is_verified, set_verified, get_profile, is_active, is_admin, set_name, get_users, get_pairs
+from messages import send_password, is_correct_mail, is_correct_company, generate_pairs
 
 logging.basicConfig()
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
@@ -69,7 +69,7 @@ def help_handler(message):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    register_user(session, message.from_user.id)
+    register_user(session, message.from_user.id, message.from_user.username)
     if message.from_user.username in ADMINS:
         set_admin(session, message.from_user.id, True)
     if is_verified(session, message.from_user.id):
@@ -118,8 +118,7 @@ def done(message):
     set_name(session, message.from_user.id, name)
     bot.send_message(message.from_user.id,
                      'Рад познакомиться!)\n\nПришли ссылку на свой профиль в любой социальной сети. Так вы в паре сможете лучше узнать друг о друге до встречи🔎')
-    bot.set_state(message.from_user.id, States.ask_mode)
-    ask_about_mode(message.from_user.id)
+    bot.set_state(message.from_user.id, States.ask_about)
 
 
 @bot.message_handler(state=States.ask_about)
@@ -167,26 +166,32 @@ def change_mode_callback(call):
 def get_users_callback(call):
     bot.answer_callback_query(call.id)
     bot.send_message(call.from_user.id, '\n'.join([
-        f'\'{user[0]}\' - \'{user[1]}\' - is_active? {user[2]} - \'{user[3]}\' - \'{user[4]}\'' for user in get_users(session)
+        f'\'{user[0]}\' - \'{user[1]}\' - \'@{user[2]}\' - is_active? {user[3]} - \'{user[4]}\' - \'{user[5]}\'' for user in get_users(session)
     ]))
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'get_pairs')
 def get_pairs_callback(call):
     bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, '\n'.join([
+        f'{get_profile(session, pair[0])} - {get_profile(session, pair[1])}' for pair in get_pairs(session)
+    ]))
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
+def change_mode_callback(call):
+    bot.answer_callback_query(call.id)
+    generate_pairs(session)
     bot.send_message(call.from_user.id, 'Генерирую пары')
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
+@bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
 def change_mode_callback(call):
     bot.answer_callback_query(call.id)
+    for pair in get_pairs(session):
+        bot.send_message(pair[0], f'Твоя пара {get_profile(session, pair[1])}')
+        bot.send_message(pair[1], f'Твоя пара {get_profile(session, pair[0])}')
     bot.send_message(call.from_user.id, 'Отправил приглашения')
-
-
-@ bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
-def change_mode_callback(call):
-    bot.answer_callback_query(call.id)
-    ask_about_mode(call.from_user.id)
 
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))

@@ -1,5 +1,6 @@
 import re
 import string
+import random
 import secrets
 
 from settings import COMPANY
@@ -22,3 +23,14 @@ def generate_password():
 
 def is_correct_company(mail):
     return mail.endswith(f'@{COMPANY}')
+
+
+def generate_pairs(session):
+    from orm import get_active_users, set_pair, delete_pairs
+    delete_pairs(session)
+    all_active_users = get_active_users(session)
+    random.shuffle(all_active_users)
+    pairs = [all_active_users[i:i + 2] for i in range(0, len(all_active_users), 2)]
+    for pair in pairs:
+        if len(pair) == 2:
+            set_pair(session, pair[0][0], pair[1][0])

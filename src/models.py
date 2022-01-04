@@ -14,6 +14,7 @@ class User(Base):
     telegram_id = Column(String, nullable=False)
     name = Column(String, default='', nullable=False)
     mail = Column(String, default='', nullable=False)
+    username = Column(String, nullable=False)
     is_active = Column(Boolean, default=False, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)

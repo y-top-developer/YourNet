@@ -1,3 +1,4 @@
+from sqlalchemy.sql.functions import user
 from models import User, Pair
 from messages import generate_password
 
@@ -53,13 +54,36 @@ def set_active(session, user_id, mode):
     session.commit()
 
 
-def register_user(session, user_id):
+def register_user(session, user_id, username):
     if not get_user(session, user_id):
         session.add(User(
             telegram_id=user_id,
+            username=username,
             password=generate_password(),
         ))
         session.commit()
+
+
+def set_pair(session, user_a, user_b):
+    session.add(Pair(
+        user_a=user_a,
+        user_b=user_b,
+    ))
+    session.commit()
+
+
+def delete_pairs(session):
+    session.query(Pair).delete()
+
+
+def get_pairs(session):
+    return (
+        session.query(
+            Pair.user_a,
+            Pair.user_b
+        )
+        .all()
+    )
 
 
 def set_link(session, user_id, link):
@@ -180,9 +204,28 @@ def get_users(session):
         session.query(
             User.name,
             User.mail,
+            User.username,
             User.is_active,
             User.link,
             User.password,
+        )
+        .all()
+    )
+
+
+def get_active_users(session):
+    return (
+        session.query(
+            User.telegram_id,
+            User.name,
+            User.mail,
+            User.username,
+            User.is_active,
+            User.link,
+            User.password,
+        )
+        .filter(
+            User.is_active == True
         )
         .all()
     )
