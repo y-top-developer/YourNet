@@ -2,8 +2,8 @@ import telebot
 from telebot import types, custom_filters
 
 from settings import ADMINS, TELEGRAM_TOKEN, SMTP
-from messages import generate_password, is_correct_mail
-from orm import get_user, set_field, create_user
+from messages import is_correct_mail
+from orm import get_user, set_field, create_user, get_admins
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -50,6 +50,8 @@ def help(message):
     )
 
     user = get_user(user_id)
+    # if user.is_admin:
+
 
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, 'Выбери подходящую опцию ниже', reply_markup=keyboard)
@@ -65,6 +67,7 @@ def start_handler(message):
     user = get_user(user_id)
     if (not user or not user.is_verified) and message.from_user.username not in ADMINS:
         create_user(user_id)
+
         answer = ('Привет!🤩\n'
                   'Я Random Coffee бот 🤖\n\n'
                   'Каждую неделю я буду предлагать '
@@ -98,16 +101,28 @@ def ask_mail_handler(message):
 
     mail = message.text
 
+    if is_correct_mail(mail):
+        set_field(user_id, 'mail', mail)
+        admins = get_admins()
+        user = get_user(user_id)
+        for admin in admins:
+            answer_to_admin = (
+                'Новый пользователь!\n'
+                f'@{message.from_user.username}\n'
+                f'[{message.from_user.first_name}](tg://user?id={user.telegram_id})\n'
+                f'{user.mail}\n'
+                f'{user.password}'
+            )
+
+            bot.send_message(admin.telegram_id, answer_to_admin, parse_mode='Markdown')
+
     if is_correct_mail(mail) and SMTP:
         answer = ('Отправил📮\n'
                   'Введи пароль из письма🔑')
-
-        set_field(user_id, 'mail', mail)
     elif is_correct_mail(mail) and not SMTP:
         answer = ('Напиши админу, '
                   f'чтобы получить пароль ({", ".join(ADMINS)})🛡️\n'
                   'И введи его сюда🔑')
-        set_field(user_id, 'mail', mail)
     else:
         answer = ('Введи свой корпоративный mail, '
                   'чтобы получить пароль📧')
