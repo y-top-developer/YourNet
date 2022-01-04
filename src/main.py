@@ -1,12 +1,14 @@
 import logging
+
+from sqlalchemy.sql.functions import user
 import telebot
 from telebot import types, custom_filters
 from sqlalchemy.orm import sessionmaker
 
 from models import engine
-from settings import TELEGRAM_TOKEN
-from messages import send_password, is_correct_mail
-from orm import get_password, set_active
+from settings import ADMINS, TELEGRAM_TOKEN
+from orm import get_password, set_active, register_user, set_link, set_admin, set_mail, is_verified, set_verified, get_profile, is_active, is_admin, set_name, get_users
+from messages import send_password, is_correct_mail, is_correct_company
 
 logging.basicConfig()
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
@@ -18,9 +20,9 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 class States:
     send_mail = 1
     ask_password = 2
-    ask_about = 3
-    ask_mode = 4
-    is_admin = 5
+    ask_name = 3
+    ask_about = 4
+    ask_mode = 5
 
 
 def ask_about_mode(chat_id):
@@ -35,44 +37,93 @@ def ask_about_mode(chat_id):
     bot.send_message(chat_id, 'Участвуешь на этой неделе?', reply_markup=keyboard)
 
 
+def help(chat_id):
+    if is_verified(session, chat_id):
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.row_width = 2
+
+        button_profile = types.InlineKeyboardButton(text='Мой профиль', callback_data='my_profile')
+        button_mode = types.InlineKeyboardButton(text='Мой статус', callback_data='my_mode')
+        button_change = types.InlineKeyboardButton(text='Поменять статус', callback_data='change_mode')
+
+        keyboard.add(button_profile, button_mode)
+        keyboard.add(button_change)
+
+        if is_admin(session, chat_id):
+            button_users = types.InlineKeyboardButton(text='Участники', callback_data='get_users')
+            button_pairs = types.InlineKeyboardButton(text='Пары', callback_data='get_pairs')
+            keyboard.add(button_users, button_pairs)
+
+        bot.send_message(chat_id, 'Настройки', reply_markup=keyboard)
+
+
+@bot.message_handler(commands=['help'])
+def help_handler(message):
+    help(message.from_user.id)
+
+
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.set_state(message.from_user.id, States.send_mail)
-    bot.send_message(message.from_user.id,
-                     'Привет, рад тебя видеть!🤩\nВведи свой корпоративный mail, чтобы получить пароль📧')
+    register_user(session, message.from_user.id)
+    if message.from_user.username in ADMINS:
+        set_admin(session, message.from_user.id, True)
+    if is_verified(session, message.from_user.id):
+        bot.set_state(message.from_user.id, States.ask_name)
+        bot.send_message(message.from_user.id,
+                         'Привет, рад тебя видеть!🤩\nКак тебы зовут?')
+    else:
+        bot.set_state(message.from_user.id, States.send_mail)
+        bot.send_message(message.from_user.id,
+                         'Привет, рад тебя видеть!🤩\nВведи свой корпоративный mail, чтобы получить пароль📧')
 
 
 @bot.message_handler(state=States.send_mail)
 def send_password_telegram(message):
     mail = message.text
     user_id = message.from_user.id
-    if is_correct_mail(mail):
+    if is_correct_mail(mail) and is_correct_company(mail):
+        set_mail(session, user_id, mail)
         send_password(mail, get_password(session, user_id))
         bot.send_message(user_id, 'Отправил📮\nВведи пароль из письма🔑')
         bot.set_state(user_id, States.ask_password)
     elif not is_correct_mail(mail):
         bot.send_message(user_id, 'Что-то с форматом⚠️')
+    elif not is_correct_company(mail):
+        bot.send_message(user_id, 'Не знаю такой компании⚠️')
     else:
         bot.send_message(user_id, 'Что-то не так😔')
 
 
 @bot.message_handler(state=States.ask_password)
 def ask_info(message):
+    password = message.text
     user_id = message.from_user.id
-    bot.send_message(user_id,
-                     'Ты в системе🌐\n\nПришли ссылку на свой профиль в любой социальной сети. Так вы в паре сможете лучше узнать друг о друге до встречи🔎')
-    bot.set_state(message.from_user.id, States.ask_about)
+    if get_password(session, user_id) == (password,):
+        set_verified(session, user_id)
+        bot.send_message(user_id,
+                         'Ты в системе🌐\n\nКак тебя зовут?')
+        bot.set_state(message.from_user.id, States.ask_name)
+    else:
+        bot.send_message(user_id, 'Пароль не подходит⚠️')
 
 
-@bot.message_handler(state=States.ask_about)
+@bot.message_handler(state=States.ask_name)
 def done(message):
-    bot.send_message(message.from_user.id, 'Отлично, все готово!✨')
+    name = message.text
+    set_name(session, message.from_user.id, name)
+    bot.send_message(message.from_user.id,
+                     'Рад познакомиться!)\n\nПришли ссылку на свой профиль в любой социальной сети. Так вы в паре сможете лучше узнать друг о друге до встречи🔎')
     bot.set_state(message.from_user.id, States.ask_mode)
     ask_about_mode(message.from_user.id)
 
 
-@bot.message_handler(commands=['mode'])
-def get_mode(message):
+@bot.message_handler(state=States.ask_about)
+def done(message):
+    link = message.text
+    set_link(session, message.from_user.id, link)
+    set_active(session, message.from_user.id, True)
+    bot.send_message(message.from_user.id, 'Отлично, все готово!✨\nСвою пару для встречи ты будешь узнавать каждый понедельник — сообщение придет в этот чат\n\nНапиши партнеру в Telegram, чтобы договориться о встрече или звонке\nВремя и место вы выбираете сами')
+    bot.set_state(message.from_user.id, States.ask_mode)
     ask_about_mode(message.from_user.id)
 
 
@@ -84,6 +135,19 @@ def get_mode_callback(call):
     elif call.data == "stop":
         set_active(session, call.from_user.id, False)
         bot.answer_callback_query(call.id, 'Заходи еще!)')
+    elif call.data == 'my_profile':
+        profile = get_profile(session, call.from_user.id)
+        bot.send_message(call.from_user.id, f'🕴️{profile[0]}\n📧 {profile[1]}\n🤳 {profile[2]}')
+    elif call.data == 'my_mode':
+        bot.send_message(call.from_user.id, 'Ты в деле!' if is_active(session, call.from_user.id) else 'На паузе')
+    elif call.data == 'change_mode':
+        ask_about_mode(call.from_user.id)
+    elif call.data == 'get_users':
+        bot.send_message(call.from_user.id, '\n'.join([
+            f'\'{user[0]}\' - \'{user[1]}\' - \'{user[2]}\' - \'{user[3]}\'' for user in get_users(session)
+        ]))
+    elif call.data == 'get_pairs':
+        bot.send_message(call.from_user.id, 'Все пары')
 
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))
