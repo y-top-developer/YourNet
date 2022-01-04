@@ -54,6 +54,11 @@ def help(chat_id):
             button_pairs = types.InlineKeyboardButton(text='Пары', callback_data='get_pairs')
             keyboard.add(button_users, button_pairs)
 
+            button_generate_pairs = types.InlineKeyboardButton(
+                text='Сгенерировать пары', callback_data='generate_pairs')
+            button_send_invites = types.InlineKeyboardButton(text='Отправить приглашения', callback_data='send_invites')
+            keyboard.add(button_generate_pairs, button_send_invites)
+
         bot.send_message(chat_id, 'Настройки', reply_markup=keyboard)
 
 
@@ -127,27 +132,61 @@ def done(message):
     ask_about_mode(message.from_user.id)
 
 
-@bot.callback_query_handler(func=lambda call: True)
-def get_mode_callback(call):
-    if call.data == "run":
-        set_active(session, call.from_user.id, True)
-        bot.answer_callback_query(call.id, 'Жди пару!)')
-    elif call.data == "stop":
-        set_active(session, call.from_user.id, False)
-        bot.answer_callback_query(call.id, 'Заходи еще!)')
-    elif call.data == 'my_profile':
-        profile = get_profile(session, call.from_user.id)
-        bot.send_message(call.from_user.id, f'🕴️{profile[0]}\n📧 {profile[1]}\n🤳 {profile[2]}')
-    elif call.data == 'my_mode':
-        bot.send_message(call.from_user.id, 'Ты в деле!' if is_active(session, call.from_user.id) else 'На паузе')
-    elif call.data == 'change_mode':
-        ask_about_mode(call.from_user.id)
-    elif call.data == 'get_users':
-        bot.send_message(call.from_user.id, '\n'.join([
-            f'\'{user[0]}\' - \'{user[1]}\' - \'{user[2]}\' - \'{user[3]}\'' for user in get_users(session)
-        ]))
-    elif call.data == 'get_pairs':
-        bot.send_message(call.from_user.id, 'Все пары')
+@bot.callback_query_handler(func=lambda call: call.data == 'run')
+def run_callback(call):
+    set_active(session, call.from_user.id, True)
+    bot.answer_callback_query(call.id, 'Жди пару!)')
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'stop')
+def stop_callback(call):
+    set_active(session, call.from_user.id, False)
+    bot.answer_callback_query(call.id, 'Заходи еще!)')
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'my_profile')
+def my_profile_callback(call):
+    profile = get_profile(session, call.from_user.id)
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, f'🕴️{profile[0]}\n📧 {profile[1]}\n🤳 {profile[2]}')
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'my_mode')
+def my_mode_callback(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, 'Ты в деле!' if is_active(session, call.from_user.id) else 'На паузе')
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'change_mode')
+def change_mode_callback(call):
+    bot.answer_callback_query(call.id)
+    ask_about_mode(call.from_user.id)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'get_users')
+def get_users_callback(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, '\n'.join([
+        f'\'{user[0]}\' - \'{user[1]}\' - is_active? {user[2]} - \'{user[3]}\' - \'{user[4]}\'' for user in get_users(session)
+    ]))
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'get_pairs')
+def get_pairs_callback(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, 'Генерирую пары')
+
+
+@ bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
+def change_mode_callback(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(call.from_user.id, 'Отправил приглашения')
+
+
+@ bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
+def change_mode_callback(call):
+    bot.answer_callback_query(call.id)
+    ask_about_mode(call.from_user.id)
 
 
 bot.add_custom_filter(custom_filters.StateFilter(bot))

@@ -174,11 +174,13 @@ def get_profile(session, user_id):
         .first()
     )
 
+
 def get_users(session):
     return (
         session.query(
             User.name,
             User.mail,
+            User.is_active,
             User.link,
             User.password,
         )
