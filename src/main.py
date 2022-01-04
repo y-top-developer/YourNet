@@ -2,7 +2,8 @@ import telebot
 from telebot import types, custom_filters
 
 from settings import ADMINS, TELEGRAM_TOKEN, SMTP
-from messages import is_correct_mail
+from messages import generate_password, is_correct_mail
+from orm import get_user, set_field, create_user
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -59,14 +60,21 @@ def start_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_mail
 
-    answer = ('Привет!🤩\n'
-              'Я Random Coffee бот 🤖\n\n'
-              'Каждую неделю я буду предлагать '
-              'тебе для встречи интересного человека, '
-              'случайно выбранного среди '
-              'других участников🎲\n\n'
-              'Введи свой корпоративный mail, '
-              'чтобы получить пароль📧')
+    user = get_user(user_id)
+    if not user or not user.is_verified:
+        create_user(user_id)
+        answer = ('Привет!🤩\n'
+                  'Я Random Coffee бот 🤖\n\n'
+                  'Каждую неделю я буду предлагать '
+                  'тебе для встречи интересного человека, '
+                  'случайно выбранного среди '
+                  'других участников🎲\n\n'
+                  'Введи свой корпоративный mail, '
+                  'чтобы получить пароль📧')
+    else:
+        answer = ('Рад тебя видеть!🔥\n'
+                  'Если есть вопросы - /help')
+        next_state = States.complete
 
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, answer)
@@ -83,10 +91,15 @@ def ask_mail_handler(message):
     if is_correct_mail(mail) and SMTP:
         answer = ('Отправил📮\n'
                   'Введи пароль из письма🔑')
+
+        set_field(user_id, 'mail', mail)
+        set_field(user_id, 'password', generate_password())
     elif is_correct_mail(mail) and not SMTP:
         answer = ('Напиши админу, '
-                  f'чтобы получить пароль ({", ".join(ADMINS)})🛡️'
+                  f'чтобы получить пароль ({", ".join(ADMINS)})🛡️\n'
                   'И введи его сюда🔑')
+        set_field(user_id, 'mail', mail)
+        set_field(user_id, 'password', generate_password())
     else:
         answer = ('Введи свой корпоративный mail, '
                   'чтобы получить пароль📧')
@@ -102,8 +115,16 @@ def ask_password_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_name
 
-    answer = ('Ты в системе🌐\n\n'
-              'Как тебя зовут?☕️')
+    password = message.text
+    user = get_user(user_id)
+
+    if user.password == password:
+        answer = ('Ты в системе🌐\n\n'
+                  'Как тебя зовут?☕️')
+        set_field(user_id, 'is_verified', True)
+    else:
+        answer = ('Попробуй еще раз\n')
+        next_state = States.ask_password
 
     bot.send_message(user_id, answer)
     bot.set_state(user_id, next_state)
@@ -114,11 +135,15 @@ def ask_name_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_link
 
+    name = message.text
+
     answer = ('Рад познакомиться!)\n\n'
               'Пришли ссылку на свой профиль '
               'в любой социальной сети. '
               'Так вы в паре сможете лучше узнать '
               'друг о друге до встречи🔎')
+
+    set_field(user_id, 'name', name)
 
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, answer)
@@ -130,6 +155,8 @@ def ask_link_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
 
+    link = message.text
+
     answer = ('Отлично, все готово!✨\n\n'
               'Свою пару для встречи ты будешь узнавать'
               ' каждый понедельник — сообщение придет в этот чат\n\n'
@@ -138,12 +165,14 @@ def ask_link_handler(message):
               'Время и место вы выбираете сами\n\n'
               'Если остались вопросы - /help!)')
 
+    set_field(user_id, 'link', link)
+
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, answer)
     bot.set_state(user_id, next_state)
 
 
-@bot.message_handler(commands=['help'], state=[States.complete, ])
+@bot.message_handler(commands=['help'], state=[States.complete])
 def help_handler(message):
     help(message)
 
@@ -153,7 +182,11 @@ def change_name_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
 
+    name = message.text
+
     answer = 'Готово'
+
+    set_field(user_id, 'name', name)
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -173,7 +206,11 @@ def change_link_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
 
+    link = message.text
+
     answer = 'Готово'
+
+    set_field(user_id, 'link', link)
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -193,7 +230,11 @@ def change_work_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
 
+    work = message.text
+
     answer = 'Готово'
+
+    set_field(user_id, 'work', work)
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -213,7 +254,11 @@ def change_about_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
 
+    about = message.text
+
     answer = 'Готово'
+
+    set_field(user_id, 'about', about)
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -230,18 +275,26 @@ def change_about_handler(message):
 # user callbacks
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'help')
+@bot.callback_query_handler(func=lambda call: call.data in ['help', 'help_from_show_profile'])
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
 
     answer = call.message.text
 
+    if call.data == 'help_from_show_profile':
+        user = get_user(user_id)
+        answer = (
+            'Вот так будет выглядеть твой профиль для собеседника:\n\n'
+            f'{user}'
+        )
+
     bot.send_chat_action(user_id, 'typing')
     bot.edit_message_text(
         chat_id=user_id,
         message_id=message_id,
-        text=answer
+        text=answer,
+        parse_mode='Markdown'
     )
 
     help(call)
@@ -261,12 +314,10 @@ def show_profile_callback(call):
         text=answer
     )
 
+    user = get_user(user_id)
     answer = (
         'Вот так будет выглядеть твой профиль для собеседника:\n\n'
-        'Иван Иванов\n'
-        '*Профиль:* t.me\n\n'
-        '*Чем занимается:* Python Developer\n'
-        '*Зацепки для начала разговора:* Meow',
+        f'{user}'
     )
 
     keyboard = types.InlineKeyboardMarkup()
@@ -274,7 +325,7 @@ def show_profile_callback(call):
     keyboard.add(
         types.InlineKeyboardButton(
             text='Назад',
-            callback_data='help'
+            callback_data='help_from_show_profile'
         )
     )
     bot.send_chat_action(user_id, 'typing')
@@ -466,6 +517,8 @@ def set_pause_callback(call):
 
     answer = ('Готово')
 
+    set_field(user_id, 'is_active', False)
+
     keyboard = types.InlineKeyboardMarkup()
 
     keyboard.add(
@@ -493,6 +546,8 @@ def set_run_callback(call):
     )
 
     answer = ('Готово')
+
+    set_field(user_id, 'is_active', True)
 
     keyboard = types.InlineKeyboardMarkup()
 
