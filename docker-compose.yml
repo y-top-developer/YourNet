@@ -1,0 +1,10 @@
+version: "3"
+services:
+  telegram_random_coffee_bot:
+    container_name: telegram_random_coffee_bot
+    build: .
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ${PWD}:/src/data/

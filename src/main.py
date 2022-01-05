@@ -81,7 +81,8 @@ def help(message):
         )
 
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, 'Выбери подходящую опцию ниже', reply_markup=keyboard)
+    bot.send_message(user_id, 'Выбери подходящую опцию ниже',
+                     reply_markup=keyboard)
     bot.set_state(user_id, next_state)
 
 
@@ -101,7 +102,8 @@ def ask_mail_handler(message):
     if not user:
         answer = ('Не знаю такого пользователя')
     else:
-        answer = (f'Настройки пользователя [{user.name}](tg://user?id={user.telegram_id})')
+        answer = (
+            f'Настройки пользователя [{user.name}](tg://user?id={user.telegram_id})')
         keyboard.add(
             types.InlineKeyboardButton(
                 text='Посмотреть профиль',
@@ -128,7 +130,8 @@ def ask_mail_handler(message):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
     bot.set_state(user_id, next_state)
 
 
@@ -163,7 +166,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('refuse_'))
@@ -184,7 +188,8 @@ def show_profile_callback(call):
 
     set_field(target_user_id, 'is_verified', False)
     set_field(target_user_id, 'password', generate_password())
-    bot.send_message(target_user_id, 'Ваш аккаунт заблокирован!\nДля повторной регистрации напишите /start')
+    bot.send_message(
+        target_user_id, 'Ваш аккаунт заблокирован!\nДля повторной регистрации напишите /start')
 
     answer = ('Пользователь заблокирован')
 
@@ -197,7 +202,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('set_pause_for_admin_'))
@@ -229,7 +235,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('set_run_for_admin_'))
@@ -261,7 +268,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'show_users')
@@ -293,7 +301,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'change_user')
@@ -360,14 +369,16 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 def generate_pairs():
     all_active_users = get_active_users()
     delete_pairs()
     random.shuffle(all_active_users)
-    pairs = [all_active_users[i:i + 2] for i in range(0, len(all_active_users), 2)]
+    pairs = [all_active_users[i:i + 2]
+             for i in range(0, len(all_active_users), 2)]
     for pair in pairs:
         if len(pair) == 2:
             create_pair(pair[0].telegram_id, pair[1].telegram_id)
@@ -404,16 +415,20 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 def send_invites():
     for pair in get_pairs():
         if pair.user_b:
-            bot.send_message(pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
-            bot.send_message(pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
+            bot.send_message(
+                pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
+            bot.send_message(
+                pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
         else:
-            bot.send_message(pair.user_a, f'Привет!\n\nНа этой неделе пары не нашлось😞', parse_mode='Markdown')
+            bot.send_message(
+                pair.user_a, f'Привет!\n\nНа этой неделе пары не нашлось😞', parse_mode='Markdown')
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
@@ -445,7 +460,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 # user commands
 
@@ -505,14 +521,15 @@ def ask_mail_handler(message):
                 f'{user.password}'
             )
 
-            bot.send_message(admin.telegram_id, answer_to_admin, parse_mode='Markdown')
+            bot.send_message(admin.telegram_id,
+                             answer_to_admin, parse_mode='Markdown')
 
     if is_correct_mail(mail) and SMTP:
         answer = ('Отправил📮\n'
                   'Введи пароль из письма🔑')
     elif is_correct_mail(mail) and not SMTP:
         answer = ('Напиши админу, '
-                  f'чтобы получить пароль ({", ".join(ADMINS)})🛡️\n'
+                  f'чтобы получить пароль ({", ".join(["@"+i for i in ADMINS])})🛡️\n'
                   'И введи его сюда🔑')
     else:
         answer = ('Введи свой корпоративный mail, '
@@ -750,7 +767,8 @@ def show_profile_callback(call):
         )
     )
     bot.send_chat_action(user_id, 'typing')
-    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.send_message(user_id, answer, parse_mode='Markdown',
+                     reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'change_name')
@@ -990,7 +1008,7 @@ def schedule_checker():
     try:
         while True:
             schedule.run_pending()
-            sleep(1)
+            sleep(1) 
     except Exception as e:
         print(e)
 

@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, create_engine
 from messages import generate_password
 
 Base = declarative_base()
-engine = create_engine('sqlite:///db.db?check_same_thread=False')
+engine = create_engine('sqlite:///data/db.db?check_same_thread=False')
 
 
 class User(Base):
