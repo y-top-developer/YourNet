@@ -3,7 +3,7 @@ import telebot
 from telebot import types, custom_filters
 
 from settings import ADMINS, TELEGRAM_TOKEN, SMTP
-from messages import is_correct_mail
+from messages import generate_password, is_correct_mail
 from orm import get_user, set_field, create_user, get_admins, get_users, get_active_users, create_pair, delete_pairs, get_pairs
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
@@ -21,12 +21,14 @@ class States:
     change_link = 7
     change_work = 8
     change_about = 9
+    change_user_for_ask_id_admin = 10
 
 # general functions
 
 
 def help(message):
     user_id = message.from_user.id
+    next_state = States.complete
 
     keyboard = types.InlineKeyboardMarkup()
     keyboard.row_width = 1
@@ -58,6 +60,10 @@ def help(message):
                 callback_data='show_users'
             ),
             types.InlineKeyboardButton(
+                text='Настройки пользователя',
+                callback_data='change_user'
+            ),
+            types.InlineKeyboardButton(
                 text='Пары',
                 callback_data='show_pairs'
             ),
@@ -73,8 +79,184 @@ def help(message):
 
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, 'Выбери подходящую опцию ниже', reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
 
 # admin callbacks
+
+@bot.message_handler(state=States.change_user_for_ask_id_admin)
+def ask_mail_handler(message):
+    user_id = message.from_user.id
+    next_state = States.complete
+
+    telegram_id = message.text
+
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.row_width = 1
+
+    user = get_user(telegram_id)
+    if not user:
+        answer = ('Не знаю такого пользователя')
+    else:
+        answer = (f'Настройки пользователя [{user.name}](tg://user?id={user.telegram_id})')
+        keyboard.add(
+            types.InlineKeyboardButton(
+                text='Посмотреть профиль',
+                callback_data=f'show_profile_for_admin_{user.telegram_id}'
+            ),
+            types.InlineKeyboardButton(
+                text='Заблокировать',
+                callback_data=f'refuse_{user.telegram_id}'
+            ),
+            types.InlineKeyboardButton(
+                text='Поставить на паузу',
+                callback_data=f'set_pause_for_admin_{user.telegram_id}'
+            ),
+            types.InlineKeyboardButton(
+                text='Снять c паузы',
+                callback_data=f'set_run_for_admin_{user.telegram_id}'
+            )
+        )
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('show_profile_for_admin_'))
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    target_user_id = call.data[len('show_profile_for_admin_'):]
+
+    answer = ('👉 Посмотреть профиль')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    user = get_user(target_user_id)
+    answer = (
+        'Вот так будет выглядеть твой профиль для собеседника:\n\n'
+        f'{user}'
+    )
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help_from_show_profile'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('refuse_'))
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    target_user_id = call.data[len('refuse_'):]
+
+    answer = ('👉 Убрать подтверждение')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    set_field(target_user_id, 'is_verified', False)
+    set_field(target_user_id, 'password', generate_password())
+    bot.send_message(target_user_id, 'Ваш аккаунт заблокирован!\nДля повторной регистрации напишите /start')
+
+    answer = ('Пользователь заблокирован')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('set_pause_for_admin_'))
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    target_user_id = call.data[len('set_pause_for_admin_'):]
+
+    answer = ('👉 Поставить на паузу')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    set_field(target_user_id, 'is_active', False)
+    answer = ('Пользователь на паузе')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('set_run_for_admin_'))
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+
+    target_user_id = call.data[len('set_run_for_admin_'):]
+
+    answer = ('👉 Снять c паузы')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    set_field(target_user_id, 'is_active', False)
+    answer = ('Пользователь запущен')
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'show_users')
@@ -94,7 +276,7 @@ def show_profile_callback(call):
     users = get_users()
     answer = (
         '\n'.join(
-            [f'[{user.name}](tg://user?id={user.telegram_id}) - {"Run" if user.is_active else "Pause"} - {user.password}' for user in users])
+            [f'[{user.name}](tg://user?id={user.telegram_id}) - {user.telegram_id} - {"Verified" if user.is_verified else "Blocked"} - {"Run" if user.is_active else "Pause"} - {user.password}' for user in users])
     )
 
     keyboard = types.InlineKeyboardMarkup()
@@ -107,6 +289,36 @@ def show_profile_callback(call):
     )
     bot.send_chat_action(user_id, 'typing')
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data == 'change_user')
+def show_profile_callback(call):
+    user_id = call.message.chat.id
+    message_id = call.message.message_id
+    next_state = States.change_user_for_ask_id_admin
+
+    answer = ('👉 Настройки пользователя')
+
+    bot.send_chat_action(user_id, 'typing')
+    bot.edit_message_text(
+        chat_id=user_id,
+        message_id=message_id,
+        text=answer
+    )
+
+    answer = 'Введи номер пользователя'
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text='Назад',
+            callback_data='help'
+        )
+    )
+    bot.send_chat_action(user_id, 'typing')
+    bot.send_message(user_id, answer, reply_markup=keyboard)
+    bot.set_state(user_id, next_state)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == 'show_pairs')
@@ -128,7 +340,7 @@ def show_profile_callback(call):
         answer = (
             '\n'.join(
                 [f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - [{get_user(pair.user_b).name}](tg://user?id={get_user(pair.user_b).telegram_id})' if pair.user_b !=
-                '' else f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - None' for pair in pairs]
+                 '' else f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - None' for pair in pairs]
             )
         )
     else:
@@ -146,7 +358,7 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
+@bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -186,7 +398,7 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
+@bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -225,7 +437,7 @@ def show_profile_callback(call):
 # user commands
 
 
-@ bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start'])
 def start_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_mail
@@ -260,7 +472,7 @@ def start_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.ask_mail)
+@bot.message_handler(state=States.ask_mail)
 def ask_mail_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_password
@@ -299,7 +511,7 @@ def ask_mail_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.ask_password)
+@bot.message_handler(state=States.ask_password)
 def ask_password_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_name
@@ -319,7 +531,7 @@ def ask_password_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.ask_name)
+@bot.message_handler(state=States.ask_name)
 def ask_name_handler(message):
     user_id = message.from_user.id
     next_state = States.ask_link
@@ -339,7 +551,7 @@ def ask_name_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.ask_link)
+@bot.message_handler(state=States.ask_link)
 def ask_link_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -361,7 +573,7 @@ def ask_link_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(commands=['help'])
+@bot.message_handler(commands=['help'])
 def help_handler(message):
     user_id = message.from_user.id
 
@@ -372,7 +584,7 @@ def help_handler(message):
         start_handler(message)
 
 
-@ bot.message_handler(state=States.change_name)
+@bot.message_handler(state=States.change_name)
 def change_name_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -396,7 +608,7 @@ def change_name_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.change_link)
+@bot.message_handler(state=States.change_link)
 def change_link_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -420,7 +632,7 @@ def change_link_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.change_work)
+@bot.message_handler(state=States.change_work)
 def change_work_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -444,7 +656,7 @@ def change_work_handler(message):
     bot.set_state(user_id, next_state)
 
 
-@ bot.message_handler(state=States.change_about)
+@bot.message_handler(state=States.change_about)
 def change_about_handler(message):
     user_id = message.from_user.id
     next_state = States.complete
@@ -470,12 +682,13 @@ def change_about_handler(message):
 # user callbacks
 
 
-@ bot.callback_query_handler(func=lambda call: call.data in ['help', 'help_from_show_profile'])
+@bot.callback_query_handler(func=lambda call: call.data in ['help', 'help_from_show_profile'])
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
 
     answer = call.message.text
+    print(answer)
 
     if call.data == 'help_from_show_profile':
         user = get_user(user_id)
@@ -495,7 +708,7 @@ def change_profile_callback(call):
     help(call)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'show_profile')
+@bot.callback_query_handler(func=lambda call: call.data == 'show_profile')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -527,8 +740,8 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'change_name')
-def change_profile_callback(call):
+@bot.callback_query_handler(func=lambda call: call.data == 'change_name')
+def change_name_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
     next_state = States.change_name
@@ -557,8 +770,8 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'change_link')
-def change_profile_callback(call):
+@bot.callback_query_handler(func=lambda call: call.data == 'change_link')
+def change_link_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
     next_state = States.change_link
@@ -587,8 +800,8 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'change_work')
-def change_profile_callback(call):
+@bot.callback_query_handler(func=lambda call: call.data == 'change_work')
+def change_work_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
     next_state = States.change_work
@@ -617,8 +830,8 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'change_about')
-def change_profile_callback(call):
+@bot.callback_query_handler(func=lambda call: call.data == 'change_about')
+def change_about_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
     next_state = States.change_about
@@ -649,7 +862,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'change_profile')
+@bot.callback_query_handler(func=lambda call: call.data == 'change_profile')
 def change_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -696,7 +909,7 @@ def change_profile_callback(call):
     bot.set_state(user_id, next_state)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'set_pause')
+@bot.callback_query_handler(func=lambda call: call.data == 'set_pause')
 def set_pause_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
@@ -726,7 +939,7 @@ def set_pause_callback(call):
     bot.send_message(user_id, answer, reply_markup=keyboard)
 
 
-@ bot.callback_query_handler(func=lambda call: call.data == 'set_run')
+@bot.callback_query_handler(func=lambda call: call.data == 'set_run')
 def set_run_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
