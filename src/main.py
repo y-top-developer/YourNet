@@ -1,5 +1,8 @@
 import random
 import telebot
+import schedule
+from time import sleep
+from threading import Thread
 from telebot import types, custom_filters
 
 from settings import ADMINS, TELEGRAM_TOKEN, SMTP
@@ -214,6 +217,7 @@ def show_profile_callback(call):
     )
 
     set_field(target_user_id, 'is_active', False)
+    bot.send_message(target_user_id, 'Админ поставил тебя на паузу')
     answer = ('Пользователь на паузе')
 
     keyboard = types.InlineKeyboardMarkup()
@@ -244,8 +248,9 @@ def show_profile_callback(call):
         text=answer
     )
 
-    set_field(target_user_id, 'is_active', False)
+    set_field(target_user_id, 'is_active', True)
     answer = ('Пользователь запущен')
+    bot.send_message(target_user_id, 'Админ включил тебя во встречи')
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -358,6 +363,18 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
+def generate_pairs():
+    all_active_users = get_active_users()
+    delete_pairs()
+    random.shuffle(all_active_users)
+    pairs = [all_active_users[i:i + 2] for i in range(0, len(all_active_users), 2)]
+    for pair in pairs:
+        if len(pair) == 2:
+            create_pair(pair[0].telegram_id, pair[1].telegram_id)
+        else:
+            create_pair(pair[0].telegram_id, '')
+
+
 @bot.callback_query_handler(func=lambda call: call.data == 'generate_pairs')
 def show_profile_callback(call):
     user_id = call.message.chat.id
@@ -372,15 +389,7 @@ def show_profile_callback(call):
         text=answer
     )
 
-    all_active_users = get_active_users()
-    delete_pairs()
-    random.shuffle(all_active_users)
-    pairs = [all_active_users[i:i + 2] for i in range(0, len(all_active_users), 2)]
-    for pair in pairs:
-        if len(pair) == 2:
-            create_pair(pair[0].telegram_id, pair[1].telegram_id)
-        else:
-            create_pair(pair[0].telegram_id, '')
+    generate_pairs()
 
     answer = (
         'Сгенерировал пары'
@@ -398,17 +407,21 @@ def show_profile_callback(call):
     bot.send_message(user_id, answer, parse_mode='Markdown', reply_markup=keyboard)
 
 
+def send_invites():
+    for pair in get_pairs():
+        if pair.user_b:
+            bot.send_message(pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
+            bot.send_message(pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
+        else:
+            bot.send_message(pair.user_a, f'Привет!\n\nНа этой неделе пары не нашлось😞', parse_mode='Markdown')
+
+
 @bot.callback_query_handler(func=lambda call: call.data == 'send_invites')
 def show_profile_callback(call):
     user_id = call.message.chat.id
     message_id = call.message.message_id
 
-    for pair in get_pairs():
-        if pair.user_b:
-            bot.send_message(pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
-            bot.send_message(pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
-        else:
-            bot.send_message(pair.user_a, f'Привет!\n\nНа этой неделе пары не нашлось😞', parse_mode='Markdown')
+    send_invites()
 
     answer = ('👉 Отправить приглашения')
 
@@ -972,5 +985,19 @@ def set_run_callback(call):
 bot.add_custom_filter(custom_filters.StateFilter(bot))
 bot.add_custom_filter(custom_filters.IsDigitFilter())
 
+
+def schedule_checker():
+    try:
+        while True:
+            schedule.run_pending()
+            sleep(1)
+    except Exception as e:
+        print(e)
+
+
 if __name__ == "__main__":
+    schedule.every().sunday.at('12:00').do(generate_pairs)
+    schedule.every().monday.at('12:00').do(send_invites)
+    Thread(target=schedule_checker).start()
+
     bot.polling()
