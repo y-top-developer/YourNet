@@ -3,6 +3,7 @@ from re import L
 from sqlalchemy.orm import sessionmaker
 
 from models import User, Pair, engine
+from messages import generate_password
 
 logging.basicConfig()
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
@@ -62,7 +63,8 @@ def get_active_users():
 def create_user(user_id):
     if not get_user(user_id):
         session.add(User(
-            telegram_id=user_id
+            telegram_id=user_id,
+            password=generate_password(),
         ))
         session.commit()
 
