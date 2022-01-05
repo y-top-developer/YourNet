@@ -124,11 +124,15 @@ def show_profile_callback(call):
     )
 
     pairs = get_pairs()
-    answer = (
-        '\n'.join(
-            [f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - [{get_user(pair.user_b).name}](tg://user?id={get_user(pair.user_b).telegram_id})' for pair in pairs]
+    if pairs:
+        answer = (
+            '\n'.join(
+                [f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - [{get_user(pair.user_b).name}](tg://user?id={get_user(pair.user_b).telegram_id})' if pair.user_b !=
+                '' else f'[{get_user(pair.user_a).name}](tg://user?id={get_user(pair.user_a).telegram_id}) - None' for pair in pairs]
+            )
         )
-    )
+    else:
+        answer = 'Пар нету'
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -163,6 +167,8 @@ def show_profile_callback(call):
     for pair in pairs:
         if len(pair) == 2:
             create_pair(pair[0].telegram_id, pair[1].telegram_id)
+        else:
+            create_pair(pair[0].telegram_id, '')
 
     answer = (
         'Сгенерировал пары'
@@ -186,8 +192,11 @@ def show_profile_callback(call):
     message_id = call.message.message_id
 
     for pair in get_pairs():
-        bot.send_message(pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
-        bot.send_message(pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
+        if pair.user_b:
+            bot.send_message(pair.user_a, f'Твоя пара!\n\n{get_user(pair.user_a)}', parse_mode='Markdown')
+            bot.send_message(pair.user_b, f'Твоя пара!\n\n{get_user(pair.user_b)}', parse_mode='Markdown')
+        else:
+            bot.send_message(pair.user_a, f'Привет!\n\nНа этой неделе пары не нашлось😞', parse_mode='Markdown')
 
     answer = ('👉 Отправить приглашения')
 
